@@ -108,30 +108,32 @@ class ByteBufStatementSpec extends FlatSpec with Matchers {
     parser.parse(in, "http://www.stellman-greene.com/pbprdf")
     logger.info("Done parsing RDF")
 
-    val buf = ByteBufAllocator.DEFAULT.buffer(1024 * 1024 * 10)
+    val buf = ByteBufAllocator.DEFAULT.buffer(1024 * 1024 * 50)
     val w = new ByteBufStatementWriter(buf, MockCodexProvider)
 
     val statementsFromTrig = statementCollector.getStatements.toList
 
     var start = System.currentTimeMillis
-    var count = 0
     statementsFromTrig.foreach(statement => {
       w.writeStatement(statement)
-      count += 1
     })
-    logger.info(s"Serizlied ${count} statements to Netty buffer in ${System.currentTimeMillis - start}ms")
+    logger.info(s"Serizlied ${statementsFromTrig.size} statements to Netty buffer in ${System.currentTimeMillis - start}ms")
+
+    logger.info(s"Buffer write index = ${buf.writerIndex}, average ${buf.writerIndex / statementsFromTrig.size} bytes per statement")
 
     val statementsFromBuffer = Queue[Statement]()
+    start = System.currentTimeMillis
     new ByteBufStatementIterator(buf, MockCodexProvider, w.bnodeIdLookup).toList.foreach(statementsFromBuffer.enqueue(_))
+    logger.info(s"Deserialized ${statementsFromBuffer.size} statements from Netty buffer in ${System.currentTimeMillis - start}ms")
 
     statementsFromTrig.size should be(statementsFromBuffer.size)
 
-    start = System.currentTimeMillis
-    count = 0
     statementsFromTrig.foreach(statementFromTrig => {
       val statementFromBuffer = statementsFromBuffer.dequeue
-      count += 1
+      statementFromBuffer.getSubject should be(statementFromTrig.getSubject)
+      statementFromBuffer.getPredicate should be(statementFromTrig.getPredicate)
+      statementFromBuffer.getObject should be(statementFromTrig.getObject)
+      statementFromBuffer.getContext should be(statementFromTrig.getContext)
     })
-    logger.info(s"Deserialized ${count} statements to Netty buffer and compared them in ${System.currentTimeMillis - start}ms")
   }
 }
